@@ -1,4 +1,5 @@
 import logging
+import os
 
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,25 @@ def init_db() -> None:
     Initialize the database by creating all tables.
     """
     try:
+        # Ensure database directory exists
+        db_url = settings.DATABASE_URL
+        if db_url.startswith('sqlite:///'):
+            db_path = db_url.replace('sqlite:///', '')
+            
+            # Handle both absolute and relative paths
+            if db_path.startswith('/'):
+                # Absolute path
+                db_dir = os.path.dirname(db_path)
+            else:
+                # Relative path
+                if db_path.startswith('./'):
+                    db_path = db_path[2:]
+                db_dir = os.path.dirname(db_path)
+                
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
+                logger.info(f"Ensured database directory exists: {db_dir}")
+        
         # Create all tables
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully.")
