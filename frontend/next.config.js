@@ -11,6 +11,11 @@ const nextConfig = {
   images: {
     domains: ['localhost', 'backend'],
   },
+  webpack: (config) => {
+    // This helps with module resolution in Docker
+    config.resolve.fallback = { fs: false, path: false };
+    return config;
+  },
 }
 
 module.exports = nextConfig 

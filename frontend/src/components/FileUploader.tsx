@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Card, CardContent } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Progress } from '../components/ui/progress';
-import { uploadHARFile, testCorsConnection } from '../lib/api/har-files';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
+import { uploadHARFile, testCorsConnection } from '@/lib/api/har-files';
 import { toast } from 'sonner';
 
 interface FileUploaderProps {
