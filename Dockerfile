@@ -15,12 +15,13 @@ COPY . .
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && \
-    chmod 777 /app/data
+    chmod -R 777 /app/data
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 appuser && \
     adduser --system --uid 1001 --gid 1001 appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /app/data
 
 # Switch to non-root user
 USER appuser
