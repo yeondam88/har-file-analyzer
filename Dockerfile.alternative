@@ -2,42 +2,38 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install Poetry with pip and make sure it's available
-RUN pip install --no-cache-dir poetry==1.5.1 && \
-    poetry --version
-
-# Copy poetry configuration files
+# Copy requirements
 COPY pyproject.toml poetry.lock* ./
 
-# Configure poetry to not use virtualenvs inside the container
-# Adding --local flag to avoid permission issues
-RUN poetry config virtualenvs.create false --local
+# Install poetry temporarily just to export requirements
+RUN pip install --no-cache-dir poetry==1.5.1 && \
+    poetry export -f requirements.txt --without-hashes --without dev -o requirements.txt
 
-# Install dependencies (excluding dev dependencies)
-RUN poetry install --no-interaction --no-ansi --no-dev
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Production image
 FROM python:3.11-slim AS runner
 
 WORKDIR /app
 
-# Copy dependencies from the builder stage
+# Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy the application code
+# Copy application code
 COPY . .
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && \
     chmod 777 /app/data
 
-# Create a non-root user to run the application
+# Create a non-root user
 RUN addgroup --system --gid 1001 appuser && \
     adduser --system --uid 1001 --gid 1001 appuser && \
     chown -R appuser:appuser /app
 
-# Switch to the non-root user
+# Switch to non-root user
 USER appuser
 
 # Expose the port
@@ -47,5 +43,5 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 ENV PORT=8000
 
-# Run the application with gunicorn for better performance
+# Run the application with gunicorn
 CMD ["gunicorn", "src.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"] 
