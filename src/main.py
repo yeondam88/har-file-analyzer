@@ -34,6 +34,7 @@ def create_application() -> FastAPI:
     )
     
     # Configure CORS - Proper configuration following best practices
+    logger.info(f"Configuring CORS with allowed origins: {settings.CORS_ORIGINS}")
     application.add_middleware(
         CORSMiddleware,
         # Explicitly list allowed origins - don't use wildcard with credentials
@@ -52,6 +53,24 @@ def create_application() -> FastAPI:
     
     # Include API router
     application.include_router(api_router, prefix="/api")
+    
+    # Add middleware to log request origins for CORS debugging
+    @application.middleware("http")
+    async def log_request_origin(request: Request, call_next):
+        origin = request.headers.get("origin", "No origin header")
+        logger.info(f"Request received from origin: {origin}, path: {request.url.path}")
+        response = await call_next(request)
+        return response
+    
+    # Debug endpoint to check CORS settings
+    @application.get("/debug/cors", include_in_schema=False)
+    async def debug_cors():
+        """Endpoint to debug CORS settings"""
+        return {
+            "cors_origins": settings.CORS_ORIGINS,
+            "allowed_hosts": settings.ALLOWED_HOSTS,
+            "info": "If you can see this response in your browser, CORS is working for this origin."
+        }
     
     # Add exception handlers
     @application.exception_handler(HARFileException)
