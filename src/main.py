@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import os
+import socket
 
 from fastapi import FastAPI, APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
@@ -41,26 +42,24 @@ def create_application() -> FastAPI:
     
     # Get the processed CORS origins list
     cors_origins = settings.CORS_ORIGINS
-    logger.info(f"Processed CORS origins: {cors_origins}")
     
+    # Ensure our specific domain is in the list
+    specific_origin = "http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:3088"
+    if specific_origin not in cors_origins:
+        cors_origins.append(specific_origin)
+    
+    logger.info(f"Final CORS origins: {cors_origins}")
+    
+    # Add CORS middleware FIRST - order matters in FastAPI
     application.add_middleware(
         CORSMiddleware,
-        # Explicitly list allowed origins - don't use wildcard with credentials
         allow_origins=cors_origins,
-        # Only set to True if you need cookies or auth headers
-        allow_credentials=False,
-        # Specify exact methods for better security
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        # Specify exact headers for better security
-        allow_headers=["Content-Type", "Authorization", "Accept"],
-        # Expose these headers to the frontend
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
         expose_headers=["Content-Type", "Content-Length"],
-        # Cache preflight requests for 1 hour
         max_age=3600,
     )
-    
-    # Include API router
-    application.include_router(api_router, prefix="/api")
     
     # Add middleware to log request origins for CORS debugging
     @application.middleware("http")
@@ -68,19 +67,39 @@ def create_application() -> FastAPI:
         origin = request.headers.get("origin", "No origin header")
         logger.info(f"Request received from origin: {origin}, path: {request.url.path}")
         response = await call_next(request)
+        # Log CORS headers in response for debugging
+        logger.info(f"Response headers: {dict(response.headers)}")
         return response
     
     # Debug endpoint to check CORS settings
     @application.get("/debug/cors", include_in_schema=False)
-    async def debug_cors():
+    async def debug_cors(request: Request):
         """Endpoint to debug CORS settings"""
+        # Get all request headers
+        headers = {k: v for k, v in request.headers.items()}
+        
+        # Get local IP addresses
+        host_name = socket.gethostname()
+        host_ip = socket.gethostbyname(host_name)
+        
         return {
             "cors": "enabled",
             "message": "CORS is working correctly",
+            "request": {
+                "client_host": request.client.host if request.client else None,
+                "headers": headers,
+                "url": str(request.url)
+            },
+            "server": {
+                "hostname": host_name,
+                "ip": host_ip
+            },
             "debug_info": {
-                "allowed_origins": settings.CORS_ORIGINS,
+                "allowed_origins": cors_origins,
                 "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-                "allow_headers": ["Content-Type", "Authorization", "Accept"]
+                "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+                "allow_credentials": True,
+                "configured_api_url": os.environ.get("NEXT_PUBLIC_API_URL", "Not set")
             },
             "environment_variables": {
                 "CORS_ORIGINS_STR": os.environ.get("CORS_ORIGINS_STR", "Not set in environment"),
@@ -92,6 +111,12 @@ def create_application() -> FastAPI:
                 "allowed_hosts": settings.ALLOWED_HOSTS
             }
         }
+    
+    # Simple test endpoint for CORS
+    @application.get("/api/test-cors", include_in_schema=False)
+    async def test_cors():
+        """Simple endpoint to test if CORS is working"""
+        return {"message": "CORS is working if you can see this message"}
     
     # Add exception handlers
     @application.exception_handler(HARFileException)
@@ -107,6 +132,9 @@ def create_application() -> FastAPI:
             status_code=422,
             content={"detail": exc.errors()},
         )
+    
+    # Include API router
+    application.include_router(api_router, prefix="/api")
     
     return application
 
