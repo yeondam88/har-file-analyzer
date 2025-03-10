@@ -37,7 +37,7 @@ def create_application() -> FastAPI:
     application.add_middleware(
         CORSMiddleware,
         # Explicitly list allowed origins - don't use wildcard with credentials
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=settings.CORS_ORIGINS,
         # Only set to True if you need cookies or auth headers
         allow_credentials=False,
         # Specify exact methods for better security
