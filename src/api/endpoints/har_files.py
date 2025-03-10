@@ -620,27 +620,6 @@ def analyze_har_file_enhanced_patterns(
         )
 
 
-@router.get("/{har_file_id}/similar-apis", response_model=Dict[str, Any])
-def analyze_har_file_similar_apis(
-    *,
-    db: Session = Depends(get_db),
-    har_file_id: str,
-    current_user: User = Depends(get_current_active_user),
-    format: str = Query("json", description="Output format: json or markdown"),
-    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
-) -> Any:
-    """
-    Alias of /analyze/similar-apis for backward compatibility
-    """
-    return analyze_har_file_similar_apis(
-        db=db, 
-        har_file_id=har_file_id, 
-        current_user=current_user, 
-        format=format, 
-        download=download
-    )
-
-
 @router.get("/{har_file_id}/report/general", response_model=Dict[str, Any])
 def generate_general_report(
     *,
@@ -714,4 +693,99 @@ def generate_general_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating general report: {str(e)}",
-        ) 
+        )
+
+
+@router.get("/{har_file_id}/report/auth", response_model=Dict[str, Any])
+def generate_auth_report(
+    *,
+    db: Session = Depends(get_db),
+    har_file_id: str,
+    current_user: User = Depends(get_current_active_user),
+    format: str = Query("json", description="Output format: json or markdown"),
+    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
+) -> Any:
+    """
+    Generate an authentication analysis report for a HAR file.
+    
+    This endpoint provides detailed information about authentication methods:
+    - Token-based authentication
+    - Basic authentication
+    - Cookie-based authentication
+    - API key authentication
+    - OAuth flows
+    
+    Parameters:
+        format: Output format, either 'json' or 'markdown'
+        download: Whether to download the markdown file (True) or display inline (False)
+    """
+    return analyze_har_file_auth(
+        db=db,
+        har_file_id=har_file_id,
+        current_user=current_user,
+        format=format,
+        download=download
+    )
+
+
+@router.get("/{har_file_id}/report/endpoints", response_model=Dict[str, Any])
+def generate_endpoints_report(
+    *,
+    db: Session = Depends(get_db),
+    har_file_id: str,
+    current_user: User = Depends(get_current_active_user),
+    format: str = Query("json", description="Output format: json or markdown"),
+    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
+) -> Any:
+    """
+    Generate an endpoints analysis report for a HAR file.
+    
+    This endpoint provides detailed information about API endpoints:
+    - URL patterns
+    - HTTP methods
+    - Request parameters
+    - Response status codes
+    - Common response structures
+    
+    Parameters:
+        format: Output format, either 'json' or 'markdown'
+        download: Whether to download the markdown file (True) or display inline (False)
+    """
+    return analyze_har_file_endpoints(
+        db=db,
+        har_file_id=har_file_id,
+        current_user=current_user,
+        format=format,
+        download=download
+    )
+
+
+@router.get("/{har_file_id}/report/enhanced-patterns", response_model=Dict[str, Any])
+def generate_enhanced_patterns_report(
+    *,
+    db: Session = Depends(get_db),
+    har_file_id: str,
+    current_user: User = Depends(get_current_active_user),
+    format: str = Query("json", description="Output format: json or markdown"),
+    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
+) -> Any:
+    """
+    Generate an enhanced patterns analysis report for a HAR file.
+    
+    This endpoint provides advanced pattern analysis:
+    - Path parameter detection (UUIDs, IDs, slugs)
+    - Endpoint purpose classification
+    - Temporal patterns in API call sequences
+    - Resource relationships
+    
+    Parameters:
+        format: Output format, either 'json' or 'markdown'
+        download: Whether to download the markdown file (True) or display inline (False)
+    """
+    return analyze_har_file_enhanced_patterns(
+        db=db,
+        har_file_id=har_file_id,
+        current_user=current_user,
+        format=format,
+        download=download
+    ) 
