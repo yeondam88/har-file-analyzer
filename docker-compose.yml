@@ -16,7 +16,7 @@ services:
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - DEBUG=False
-      - CORS_ORIGINS=["http://localhost:3088","http://frontend:3000"]
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3088,http://frontend:3000,http://localhost:3000,http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:3088}
     volumes:
       - ./data:/app/data
     healthcheck:

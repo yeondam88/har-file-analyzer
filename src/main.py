@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+import os
 
 from fastapi import FastAPI, APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
@@ -35,10 +36,25 @@ def create_application() -> FastAPI:
     
     # Configure CORS - Proper configuration following best practices
     logger.info(f"Configuring CORS with allowed origins: {settings.CORS_ORIGINS}")
+    # Debug for CORS origins
+    logger.info(f"CORS_ORIGINS from environment: {os.environ.get('CORS_ORIGINS', 'Not set')}")
+    
+    # Ensure CORS_ORIGINS is a list and has valid values
+    cors_origins = settings.CORS_ORIGINS
+    if not isinstance(cors_origins, list):
+        logger.warning(f"CORS_ORIGINS is not a list, converting: {cors_origins}")
+        if isinstance(cors_origins, str):
+            cors_origins = [cors_origins]
+        else:
+            logger.error(f"Invalid CORS_ORIGINS type: {type(cors_origins)}")
+            cors_origins = ["http://localhost:3000"]
+    
+    logger.info(f"Final CORS origins configuration: {cors_origins}")
+    
     application.add_middleware(
         CORSMiddleware,
         # Explicitly list allowed origins - don't use wildcard with credentials
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=cors_origins,
         # Only set to True if you need cookies or auth headers
         allow_credentials=False,
         # Specify exact methods for better security
@@ -67,9 +83,22 @@ def create_application() -> FastAPI:
     async def debug_cors():
         """Endpoint to debug CORS settings"""
         return {
-            "cors_origins": settings.CORS_ORIGINS,
-            "allowed_hosts": settings.ALLOWED_HOSTS,
-            "info": "If you can see this response in your browser, CORS is working for this origin."
+            "cors": "enabled",
+            "message": "CORS is working correctly",
+            "debug_info": {
+                "allowed_origins": settings.CORS_ORIGINS,
+                "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+                "allow_headers": ["Content-Type", "Authorization", "Accept"]
+            },
+            "environment_variables": {
+                "CORS_ORIGINS_ENV": os.environ.get("CORS_ORIGINS", "Not set in environment"),
+                "raw_env_keys": list(os.environ.keys())
+            },
+            "settings_dump": {
+                "app_name": settings.APP_NAME,
+                "debug_mode": settings.DEBUG,
+                "allowed_hosts": settings.ALLOWED_HOSTS
+            }
         }
     
     # Add exception handlers
