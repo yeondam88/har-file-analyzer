@@ -68,13 +68,43 @@ def get_current_user(
     """
     For testing: Return a test user without authentication
     """
-    # Check if user exists in DB, if not create one
     try:
-        logger.info("Attempting to fetch test user from database")
-        user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
-        if not user:
+        # First check if we can execute a read query (which is less likely to lock)
+        try:
+            logger.info("Attempting to fetch test user from database")
+            user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
+            if user:
+                logger.info("Found existing test user")
+                return user
+        except Exception as read_error:
+            logger.error(f"Error reading from database: {str(read_error)}")
+            
+        # If we get here, either the user doesn't exist or we had a read error
+        # Let's return an in-memory user without persisting if there are any issues
+        try:
+            # Try with a transaction timeout
             logger.info("Test user not found, creating new test user")
-            # Create a test user
+            
+            # Check if the table exists first
+            table_exists = False
+            try:
+                result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+                table_exists = result.scalar() is not None
+            except Exception as table_check_error:
+                logger.error(f"Error checking for users table: {str(table_check_error)}")
+            
+            if not table_exists:
+                logger.warning("Users table doesn't exist, using in-memory user")
+                return User(
+                    id=TEST_USER_ID,
+                    email=TEST_USER_EMAIL,
+                    username=TEST_USER_USERNAME,
+                    hashed_password="test_hashed_password",
+                    is_active=True,
+                    is_superuser=True,
+                )
+            
+            # Create user with transaction guard
             user = User(
                 id=TEST_USER_ID,
                 email=TEST_USER_EMAIL,
@@ -83,42 +113,50 @@ def get_current_user(
                 is_active=True,
                 is_superuser=True,
             )
+            
             try:
+                db.begin_nested()  # Create a savepoint
                 db.add(user)
                 db.commit()
                 logger.info("Successfully created test user in database")
-                db.refresh(user)
-            except Exception as e:
-                logger.error(f"Error creating test user: {str(e)}")
+                return user
+            except Exception as create_error:
+                logger.error(f"Error creating test user: {str(create_error)}")
                 db.rollback()
-                # If creation fails, try to fetch again - another process might have created it
-                logger.info("Retrying to fetch test user after creation failure")
-                user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
-                if not user:
-                    logger.warning("Using in-memory test user as fallback")
-                    # If still no user, create a dummy user object without persisting to DB
-                    user = User(
-                        id=TEST_USER_ID,
-                        email=TEST_USER_EMAIL,
-                        username=TEST_USER_USERNAME,
-                        hashed_password="test_hashed_password",
-                        is_active=True,
-                        is_superuser=True,
-                    )
-    except Exception as e:
-        logger.error(f"Unexpected error in get_current_user: {str(e)}")
-        # Create a dummy user object in case of any database errors
-        logger.warning("Using in-memory test user due to unexpected error")
-        user = User(
-            id=TEST_USER_ID,
-            email=TEST_USER_EMAIL,
-            username=TEST_USER_USERNAME,
-            hashed_password="test_hashed_password",
-            is_active=True,
-            is_superuser=True,
-        )
+                
+                # If the error indicates a user already exists (unique constraint), try to fetch again
+                if "UNIQUE constraint" in str(create_error):
+                    logger.info("User likely exists due to unique constraint error, trying to fetch again")
+                    user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
+                    if user:
+                        logger.info("Successfully fetched existing user after unique constraint error")
+                        return user
+                
+                # If we still don't have a user, return an in-memory one
+                logger.warning("Using in-memory test user as fallback")
+                return User(
+                    id=TEST_USER_ID,
+                    email=TEST_USER_EMAIL,
+                    username=TEST_USER_USERNAME,
+                    hashed_password="test_hashed_password",
+                    is_active=True,
+                    is_superuser=True,
+                )
+        except Exception as e:
+            logger.error(f"Unexpected error in user creation flow: {str(e)}")
+    except Exception as outer_e:
+        logger.error(f"Unexpected error in get_current_user: {str(outer_e)}")
     
-    return user
+    # Final fallback - always return a user
+    logger.warning("Using emergency in-memory test user due to unexpected error")
+    return User(
+        id=TEST_USER_ID,
+        email=TEST_USER_EMAIL,
+        username=TEST_USER_USERNAME,
+        hashed_password="test_hashed_password",
+        is_active=True,
+        is_superuser=True,
+    )
 
 """
 # Original active user check - commented out for testing

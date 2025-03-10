@@ -68,19 +68,6 @@ def get_engine():
                         except Exception as perm_err:
                             logger.error(f"Failed to fix permissions: {str(perm_err)}")
             
-            # Create the engine with appropriate connect_args
-            engine = create_engine(
-                settings.DATABASE_URL,
-                # For SQLite, enable foreign key constraints and set timeout
-                connect_args={
-                    "check_same_thread": False,
-                    "timeout": 30
-                } if settings.DATABASE_URL.startswith("sqlite") else {},
-                # More resilient connection pool settings
-                pool_pre_ping=True,
-                pool_recycle=3600,
-            )
-            
             # For SQLite, add event listeners to enable foreign keys
             if settings.DATABASE_URL.startswith("sqlite"):
                 @event.listens_for(engine, "connect")
@@ -88,7 +75,29 @@ def get_engine():
                     cursor = dbapi_connection.cursor()
                     cursor.execute("PRAGMA foreign_keys=ON")
                     cursor.execute("PRAGMA journal_mode=WAL")
+                    # Increase timeout to reduce locking issues
+                    cursor.execute("PRAGMA busy_timeout=10000")
+                    # Set recommended settings for concurrency
+                    cursor.execute("PRAGMA temp_store=MEMORY")
+                    cursor.execute("PRAGMA synchronous=NORMAL")
+                    cursor.execute("PRAGMA cache_size=10000")
                     cursor.close()
+            
+            # Create the engine with appropriate connect_args
+            engine = create_engine(
+                settings.DATABASE_URL,
+                # For SQLite, enable foreign key constraints and set timeout
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 60,  # Increase timeout to 60 seconds (from 30)
+                    "isolation_level": "IMMEDIATE",  # Helps with concurrent access
+                } if settings.DATABASE_URL.startswith("sqlite") else {},
+                # More resilient connection pool settings
+                pool_pre_ping=True,
+                pool_recycle=3600,
+                pool_size=5,  # Limit connection pool size
+                max_overflow=10,  # Allow a few more connections if needed
+            )
             
             # Test the engine by making a simple query
             with engine.connect() as conn:

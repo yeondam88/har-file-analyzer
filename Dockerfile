@@ -97,11 +97,11 @@ id\n\
 # If we\'re in Coolify, try first with the root user to eliminate permission issues\n\
 if [ "$IN_COOLIFY" = "true" ] && [ "$(id -u)" != "0" ]; then\n\
   echo "In Coolify environment, trying to run with root privileges..."\n\
-  exec gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}\n\
+  exec gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --graceful-timeout 60 --keep-alive 5 --max-requests 200 --max-requests-jitter 20\n\
 else\n\
   # Start the application with gunicorn\n\
   echo "Starting application with database URL from environment: $DATABASE_URL"\n\
-  exec gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}\n\
+  exec gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --graceful-timeout 60 --keep-alive 5 --max-requests 200 --max-requests-jitter 20\n\
 fi\n\
 ' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh

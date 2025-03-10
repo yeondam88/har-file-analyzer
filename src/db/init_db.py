@@ -124,6 +124,16 @@ def try_fix_sqlite_permissions(db_path: str, in_coolify: bool = False) -> bool:
             except Exception as dir_err:
                 logger.warning(f"Could not set permissions on directory: {str(dir_err)}")
         
+        # Check for WAL and SHM files and fix their permissions if they exist
+        for ext in ['-wal', '-shm']:
+            wal_file = f"{db_path}{ext}"
+            if os.path.exists(wal_file):
+                try:
+                    os.chmod(wal_file, 0o666)
+                    logger.info(f"Set permissions on {wal_file}")
+                except Exception as wal_err:
+                    logger.warning(f"Could not set permissions on {wal_file}: {str(wal_err)}")
+        
         # Create or fix permissions on the database file
         if os.path.exists(db_path):
             try:
@@ -152,10 +162,15 @@ def try_fix_sqlite_permissions(db_path: str, in_coolify: bool = False) -> bool:
                 os.system(f"touch {db_path}")
                 os.system(f"chmod 666 {db_path}")
             
+            # Also fix WAL and SHM files
+            os.system(f"[ -f {db_path}-wal ] && chmod 666 {db_path}-wal || true")
+            os.system(f"[ -f {db_path}-shm ] && chmod 666 {db_path}-shm || true")
+            
             logger.info("Applied Coolify-specific fixes using system commands")
         
-        # Test if fixes worked by trying to connect
-        test_conn = sqlite3.connect(db_path)
+        # Test if fixes worked by trying to connect with a timeout
+        test_conn = sqlite3.connect(db_path, timeout=10)
+        test_conn.execute("PRAGMA busy_timeout=5000")  # 5 second timeout for locked operations
         test_conn.execute("CREATE TABLE IF NOT EXISTS permission_test (id INTEGER PRIMARY KEY)")
         test_conn.execute("INSERT INTO permission_test VALUES (1)")
         test_conn.commit()
