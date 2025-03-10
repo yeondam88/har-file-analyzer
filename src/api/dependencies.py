@@ -1,4 +1,5 @@
 from typing import Generator
+import logging
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -19,6 +20,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/auth/login", auto_error=False)
 TEST_USER_ID = "test-user-id"
 TEST_USER_EMAIL = "test@example.com"
 TEST_USER_USERNAME = "testuser"
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 """
 # Original authentication function - commented out for testing
@@ -65,20 +69,54 @@ def get_current_user(
     For testing: Return a test user without authentication
     """
     # Check if user exists in DB, if not create one
-    user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
-    if not user:
-        # Create a test user
+    try:
+        logger.info("Attempting to fetch test user from database")
+        user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
+        if not user:
+            logger.info("Test user not found, creating new test user")
+            # Create a test user
+            user = User(
+                id=TEST_USER_ID,
+                email=TEST_USER_EMAIL,
+                username=TEST_USER_USERNAME,
+                hashed_password="test_hashed_password",  # Not used for testing
+                is_active=True,
+                is_superuser=True,
+            )
+            try:
+                db.add(user)
+                db.commit()
+                logger.info("Successfully created test user in database")
+                db.refresh(user)
+            except Exception as e:
+                logger.error(f"Error creating test user: {str(e)}")
+                db.rollback()
+                # If creation fails, try to fetch again - another process might have created it
+                logger.info("Retrying to fetch test user after creation failure")
+                user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
+                if not user:
+                    logger.warning("Using in-memory test user as fallback")
+                    # If still no user, create a dummy user object without persisting to DB
+                    user = User(
+                        id=TEST_USER_ID,
+                        email=TEST_USER_EMAIL,
+                        username=TEST_USER_USERNAME,
+                        hashed_password="test_hashed_password",
+                        is_active=True,
+                        is_superuser=True,
+                    )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_current_user: {str(e)}")
+        # Create a dummy user object in case of any database errors
+        logger.warning("Using in-memory test user due to unexpected error")
         user = User(
             id=TEST_USER_ID,
             email=TEST_USER_EMAIL,
             username=TEST_USER_USERNAME,
-            hashed_password="test_hashed_password",  # Not used for testing
+            hashed_password="test_hashed_password",
             is_active=True,
             is_superuser=True,
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
     
     return user
 

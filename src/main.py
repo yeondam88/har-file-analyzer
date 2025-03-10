@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import os
 import socket
+import datetime
 
 from fastapi import FastAPI, APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
@@ -117,6 +118,16 @@ def create_application() -> FastAPI:
     async def test_cors():
         """Simple endpoint to test if CORS is working"""
         return {"message": "CORS is working if you can see this message"}
+    
+    # Simple health check endpoint
+    @application.get("/api/healthcheck", include_in_schema=True)
+    async def healthcheck():
+        """Simple health check endpoint that doesn't require authentication"""
+        return {
+            "status": "ok",
+            "message": "API is running",
+            "timestamp": str(datetime.datetime.now())
+        }
     
     # Add exception handlers
     @application.exception_handler(HARFileException)

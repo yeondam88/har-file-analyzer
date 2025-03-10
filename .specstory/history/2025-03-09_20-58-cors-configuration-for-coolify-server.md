@@ -1773,6 +1773,251 @@ _****_
 
 _****_
 
+Lastly, let's update our debug endpoint to display the fully resolved CORS settings:
+
+---
+
+_****_
+
+```diff
+              },
+              "debug_info": {
+-                 "allowed_origins": settings.CORS_ORIGINS,
++                 "allowed_origins": cors_origins,
+                  "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+                  "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+-                 "allow_credentials": True
++                 "allow_credentials": True,
++                 "configured_api_url": os.environ.get("NEXT_PUBLIC_API_URL", "Not set")
+              },
+              "environment_variables": {
+```
+
+---
+
+_****_
+
+These changes are focused on fixing your CORS issues:
+
+1. **Updated frontend configuration**:
+   - Set NEXT_PUBLIC_API_URL to use the exact sslip.io domain with the correct backend port (8088)
+   - Removed the environment variable substitution to ensure consistency
+
+2. **Ensured specific frontend domain is allowed**:
+   - Added code to explicitly include your sslip.io domain in the CORS origins list
+   - This guarantees it will be allowed even if the environment variable is misconfigured
+
+3. **Simplified CORS configuration**:
+   - Removed the wildcard origin which can cause security issues
+   - Focused on only the specific domains you need
+   - Kept the local development domains for testing
+
+4. **Enhanced debugging**:
+   - Updated the debug endpoint to show the actual CORS origins used
+   - Added the configured API URL to help diagnose frontend configuration issues
+
+After deploying these changes, your frontend will consistently use the correct domain for API requests, and your backend will be properly configured to allow those cross-origin requests.
+
+To verify this is working:
+1. Access the frontend at http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:3088/
+2. Check your browser's network tab to ensure it's making requests to http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:8088/api
+3. Visit http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:8088/debug/cors to confirm your CORS settings
+
+If you still have issues after these changes, you might want to check:
+1. Network/firewall settings on your server that might be blocking port 8088 from external access
+2. Proxy or load balancer configurations that might be affecting the CORS headers
+3. Any client-side code that might be hardcoding API URLs instead of using the environment variable
+
+---
+
+_**User**_
+
+ok now we are getting 500 i think that s good sign?
+
+Coolify
+v4.0.0-beta.398
+
+Current Team
+
+Root Team
+Dashboard
+Projects
+Servers
+Sources
+Destinations
+S3 Storages
+Shared Variables
+Notifications
+Keys & Tokens
+Tags
+Terminal
+Profile
+Teams
+Settings
+Onboarding
+Sponsor us
+Feedback
+Logout
+Logs
+SuperDisco
+production
+yeondam88/har-file-analyzer:main-ekwcco8woo0wg0os4488g844
+Running
+
+Configuration
+Deployments
+Logs
+Terminal
+
+Links
+
+Advanced
+Redeploy
+Stop
+Here you can see the logs of the application.
+Server: localhost
+backend-ygw4ko48oskkkc0k4koww4w4-042657996634
+Only Show Number of Lines
+*
+100
+Refresh
+Stream Logs
+Include Timestamps
+
+2025-03-10T04:29:07.380986048Z     await self.app(scope, receive, send)
+2025-03-10T04:29:07.380988633Z   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+2025-03-10T04:29:07.380991338Z     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+2025-03-10T04:29:07.380994063Z   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+2025-03-10T04:29:07.380996818Z     raise exc
+2025-03-10T04:29:07.380999313Z   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+2025-03-10T04:29:07.381002049Z     await app(scope, receive, sender)
+2025-03-10T04:29:07.381004673Z   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 714, in __call__
+2025-03-10T04:29:07.381007499Z     await self.middleware_stack(scope, receive, send)
+2025-03-10T04:29:07.381010083Z   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 734, in app
+2025-03-10T04:29:07.381012808Z     await route.handle(scope, receive, send)
+2025-03-10T04:29:07.381015494Z   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 288, in handle
+2025-03-10T04:29:07.381018169Z     await self.app(scope, receive, send)
+2025-03-10T04:29:07.381020724Z   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 76, in app
+2025-03-10T04:29:07.381023539Z     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+2025-03-10T04:29:07.381026414Z   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+2025-03-10T04:29:07.381029129Z     raise exc
+2025-03-10T04:29:07.381032014Z   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+2025-03-10T04:29:07.381034770Z     await app(scope, receive, sender)
+2025-03-10T04:29:07.381037366Z   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 73, in app
+2025-03-10T04:29:07.381040041Z     response = await f(request)
+2025-03-10T04:29:07.381046693Z                ^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381049318Z   File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 291, in app
+2025-03-10T04:29:07.381052043Z     solved_result = await solve_dependencies(
+2025-03-10T04:29:07.381054608Z                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381057173Z   File "/usr/local/lib/python3.11/site-packages/fastapi/dependencies/utils.py", line 615, in solve_dependencies
+2025-03-10T04:29:07.381059908Z     solved_result = await solve_dependencies(
+2025-03-10T04:29:07.381062453Z                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381065027Z   File "/usr/local/lib/python3.11/site-packages/fastapi/dependencies/utils.py", line 640, in solve_dependencies
+2025-03-10T04:29:07.381067773Z     solved = await run_in_threadpool(call, **solved_result.values)
+2025-03-10T04:29:07.381070378Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381073012Z   File "/usr/local/lib/python3.11/site-packages/starlette/concurrency.py", line 37, in run_in_threadpool
+2025-03-10T04:29:07.381075758Z     return await anyio.to_thread.run_sync(func)
+2025-03-10T04:29:07.381078323Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381080878Z   File "/usr/local/lib/python3.11/site-packages/anyio/to_thread.py", line 56, in run_sync
+2025-03-10T04:29:07.381083532Z     return await get_async_backend().run_sync_in_worker_thread(
+2025-03-10T04:29:07.381086107Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381088692Z   File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 2461, in run_sync_in_worker_thread
+2025-03-10T04:29:07.381091427Z     return await future
+2025-03-10T04:29:07.381094002Z            ^^^^^^^^^^^^
+2025-03-10T04:29:07.381096496Z   File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 962, in run
+2025-03-10T04:29:07.381099202Z     result = context.run(func, *args)
+2025-03-10T04:29:07.381101807Z              ^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381104341Z   File "/app/src/api/dependencies.py", line 80, in get_current_user
+2025-03-10T04:29:07.381106996Z     db.commit()
+2025-03-10T04:29:07.381109512Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 2032, in commit
+2025-03-10T04:29:07.381112217Z     trans.commit(_to_root=True)
+2025-03-10T04:29:07.381114771Z   File "<string>", line 2, in commit
+2025-03-10T04:29:07.381118128Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/state_changes.py", line 139, in _go
+2025-03-10T04:29:07.381120933Z     ret_value = fn(self, *arg, **kw)
+2025-03-10T04:29:07.381123518Z                 ^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381126513Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 1313, in commit
+2025-03-10T04:29:07.381133276Z     self._prepare_impl()
+2025-03-10T04:29:07.381135952Z   File "<string>", line 2, in _prepare_impl
+2025-03-10T04:29:07.381140991Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/state_changes.py", line 139, in _go
+2025-03-10T04:29:07.381143837Z     ret_value = fn(self, *arg, **kw)
+2025-03-10T04:29:07.381146411Z                 ^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381148946Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 1288, in _prepare_impl
+2025-03-10T04:29:07.381151711Z     self.session.flush()
+2025-03-10T04:29:07.381154286Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 4353, in flush
+2025-03-10T04:29:07.381156991Z     self._flush(objects)
+2025-03-10T04:29:07.381159516Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 4488, in _flush
+2025-03-10T04:29:07.381162201Z     with util.safe_reraise():
+2025-03-10T04:29:07.381164766Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+2025-03-10T04:29:07.381167481Z     raise exc_value.with_traceback(exc_tb)
+2025-03-10T04:29:07.381170035Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/session.py", line 4449, in _flush
+2025-03-10T04:29:07.381172741Z     flush_context.execute()
+2025-03-10T04:29:07.381175275Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/unitofwork.py", line 466, in execute
+2025-03-10T04:29:07.381177990Z     rec.execute(self)
+2025-03-10T04:29:07.381180556Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/unitofwork.py", line 642, in execute
+2025-03-10T04:29:07.381183221Z     util.preloaded.orm_persistence.save_obj(
+2025-03-10T04:29:07.381185826Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/persistence.py", line 93, in save_obj
+2025-03-10T04:29:07.381188531Z     _emit_insert_statements(
+2025-03-10T04:29:07.381191046Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/orm/persistence.py", line 1048, in _emit_insert_statements
+2025-03-10T04:29:07.381193851Z     result = connection.execute(
+2025-03-10T04:29:07.381196406Z              ^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381198970Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1416, in execute
+2025-03-10T04:29:07.381201695Z     return meth(
+2025-03-10T04:29:07.381204241Z            ^^^^^
+2025-03-10T04:29:07.381206765Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 516, in _execute_on_connection
+2025-03-10T04:29:07.381209540Z     return connection._execute_clauseelement(
+2025-03-10T04:29:07.381212126Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381214680Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1638, in _execute_clauseelement
+2025-03-10T04:29:07.381221042Z     ret = self._execute_context(
+2025-03-10T04:29:07.381224168Z           ^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381226793Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1843, in _execute_context
+2025-03-10T04:29:07.381229528Z     return self._exec_single_context(
+2025-03-10T04:29:07.381232133Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:29:07.381234688Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1983, in _exec_single_context
+2025-03-10T04:29:07.381237402Z     self._handle_dbapi_exception(
+2025-03-10T04:29:07.381239957Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2352, in _handle_dbapi_exception
+2025-03-10T04:29:07.381242692Z     raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+2025-03-10T04:29:07.381245318Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1964, in _exec_single_context
+2025-03-10T04:29:07.381248033Z     self.dialect.do_execute(
+2025-03-10T04:29:07.381250558Z   File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 942, in do_execute
+2025-03-10T04:29:07.381253303Z     cursor.execute(statement, parameters)
+2025-03-10T04:29:07.381255898Z sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked
+2025-03-10T04:29:07.381258584Z [SQL: INSERT INTO users (id, email, username, hashed_password, is_active, is_superuser, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)]
+2025-03-10T04:29:07.381261359Z [parameters: ('test-user-id', 'test@example.com', 'testuser', 'test_hashed_password', 1, 1, '2025-03-10 04:29:02.345897', '2025-03-10 04:29:02.345901')]
+2025-03-10T04:29:07.381264144Z (Background on this error at: https://sqlalche.me/e/20/e3q8)
+frontend-ygw4ko48oskkkc0k4koww4w4-042658003406
+Only Show Number of Lines
+*
+100
+Refresh
+Stream Logs
+Include Timestamps
+
+2025-03-10T04:27:03.502411513Z 
+2025-03-10T04:27:03.502435228Z > frontend@0.1.0 dev:docker
+2025-03-10T04:27:03.502438744Z > next dev
+2025-03-10T04:27:03.502441069Z 
+2025-03-10T04:27:05.015037013Z    ▲ Next.js 15.2.1
+2025-03-10T04:27:05.015198739Z    - Local:        http://localhost:3000
+2025-03-10T04:27:05.015208668Z    - Network:      http://10.0.2.4:3000
+2025-03-10T04:27:05.015344104Z 
+2025-03-10T04:27:05.015399698Z  ✓ Starting...
+2025-03-10T04:27:05.096349423Z Attention: Next.js now collects completely anonymous telemetry regarding usage.
+2025-03-10T04:27:05.096377567Z This information is used to shape Next.js' roadmap and prioritize features.
+2025-03-10T04:27:05.096383358Z You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+2025-03-10T04:27:05.096460573Z https://nextjs.org/telemetry
+2025-03-10T04:27:05.096475011Z 
+2025-03-10T04:27:06.512118290Z  ✓ Ready in 1710ms
+2025-03-10T04:27:08.919938858Z  ○ Compiling / ...
+2025-03-10T04:29:00.313578068Z  ✓ Compiled / in 111.9s (1104 modules)
+2025-03-10T04:29:00.949672123Z  GET / 200 in 3524ms
+2025-03-10T04:29:02.756503505Z  ✓ Compiled /favicon.ico in 487ms (628 modules)
+2025-03-10T04:29:03.063422379Z  GET /favicon.ico 200 in 799ms
+2025-03-10T04:29:08.738048049Z  GET / 200 in 213ms
+
+---
+
+_**Assistant**_
+
 
 
 ---
