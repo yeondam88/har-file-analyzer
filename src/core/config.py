@@ -20,27 +20,26 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Use a string as the base type to avoid Pydantic trying to parse as JSON first
+    CORS_ORIGINS_STR: str = "http://localhost:3000,http://127.0.0.1:3000"
     
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
-        if isinstance(v, str):
-            # Handle comma-separated string
-            if "," in v and not v.startswith("["):
-                return [i.strip() for i in v.split(",")]
-            # Handle JSON-formatted string
-            elif v.startswith("[") and v.endswith("]"):
-                try:
-                    import json
-                    return json.loads(v)
-                except:
-                    pass
-            # Handle single URL
-            return [v]
-        elif isinstance(v, list):
-            return v
-        raise ValueError(f"Invalid CORS_ORIGINS format: {v}")
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        """Process the CORS_ORIGINS_STR into a list of allowed origins."""
+        value = self.CORS_ORIGINS_STR
+        # Handle comma-separated string
+        if "," in value and not value.startswith("["):
+            return [i.strip() for i in value.split(",")]
+        # Handle JSON-formatted string
+        elif value.startswith("[") and value.endswith("]"):
+            try:
+                import json
+                return json.loads(value)
+            except json.JSONDecodeError:
+                # Fall back to treating as a single URL if JSON parsing fails
+                return [value]
+        # Handle single URL
+        return [value]
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
 

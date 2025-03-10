@@ -341,6 +341,371 @@ Let's add a more comprehensive `/debug/cors` endpoint that shows exactly what's 
 
 _****_
 
+```diff
+  import logging
+  from pathlib import Path
++ import os
+  
+  from fastapi import FastAPI, APIRouter, Request, Depends
+          """Endpoint to debug CORS settings"""
+          return {
+-             "cors_origins": settings.CORS_ORIGINS,
+-             "allowed_hosts": settings.ALLOWED_HOSTS,
+-             "info": "If you can see this response in your browser, CORS is working for this origin."
++             "cors": "enabled",
++             "message": "CORS is working correctly",
++             "debug_info": {
++                 "allowed_origins": settings.CORS_ORIGINS,
++                 "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
++                 "allow_headers": ["Content-Type", "Authorization", "Accept"]
++             },
++             "environment_variables": {
++                 "CORS_ORIGINS_ENV": os.environ.get("CORS_ORIGINS", "Not set in environment"),
++                 "raw_env_keys": list(os.environ.keys())
++             },
++             "settings_dump": {
++                 "app_name": settings.APP_NAME,
++                 "debug_mode": settings.DEBUG,
++                 "allowed_hosts": settings.ALLOWED_HOSTS
++             }
+          }
+      
+```
+
+---
+
+_****_
+
+Now let's check the `config.py` file to make sure it's properly reading environment variables:
+
+---
+
+_****_
+
+Read file: undefined
+
+---
+
+_****_
+
+The issue might be related to how Pydantic is handling URL validation for CORS origins. Let's update the config.py file to better handle environment variables in Docker/Coolify:
+
+---
+
+_****_
+
+```diff
+      
+      # CORS
+-     CORS_ORIGINS: List[AnyHttpUrl] = ["http://localhost:3000", "http://127.0.0.1:3000"]
++     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+      
+      @field_validator("CORS_ORIGINS", mode="before")
+      @classmethod
+      def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
+-         if isinstance(v, str) and not v.startswith("["):
+-             return [i.strip() for i in v.split(",")]
+-         elif isinstance(v, (list, str)):
++         if isinstance(v, str):
++             # Handle comma-separated string
++             if "," in v and not v.startswith("["):
++                 return [i.strip() for i in v.split(",")]
++             # Handle JSON-formatted string
++             elif v.startswith("[") and v.endswith("]"):
++                 try:
++                     import json
++                     return json.loads(v)
++                 except:
++                     pass
++             # Handle single URL
++             return [v]
++         elif isinstance(v, list):
+              return v
+-         raise ValueError(v)
++         raise ValueError(f"Invalid CORS_ORIGINS format: {v}")
+      
+      model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=True)
+```
+
+---
+
+_****_
+
+Now let's update the CORS middleware in main.py to add more debugging and better handle different formats:
+
+---
+
+_****_
+
+```diff
+      # Configure CORS - Proper configuration following best practices
+      logger.info(f"Configuring CORS with allowed origins: {settings.CORS_ORIGINS}")
++     # Debug for CORS origins
++     logger.info(f"CORS_ORIGINS from environment: {os.environ.get('CORS_ORIGINS', 'Not set')}")
++     
++     # Ensure CORS_ORIGINS is a list and has valid values
++     cors_origins = settings.CORS_ORIGINS
++     if not isinstance(cors_origins, list):
++         logger.warning(f"CORS_ORIGINS is not a list, converting: {cors_origins}")
++         if isinstance(cors_origins, str):
++             cors_origins = [cors_origins]
++         else:
++             logger.error(f"Invalid CORS_ORIGINS type: {type(cors_origins)}")
++             cors_origins = ["http://localhost:3000"]
++     
++     logger.info(f"Final CORS origins configuration: {cors_origins}")
++     
+      application.add_middleware(
+          CORSMiddleware,
+          # Explicitly list allowed origins - don't use wildcard with credentials
+-         allow_origins=settings.CORS_ORIGINS,
++         allow_origins=cors_origins,
+          # Only set to True if you need cookies or auth headers
+          allow_credentials=False,
+```
+
+---
+
+_****_
+
+Now we need to make sure that the docker-compose.yml file is correctly set up to pass the environment variables to the container. Let's look for that file:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "docker-compose.yml" • **1** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+Let's examine the docker-compose.yml file:
+
+---
+
+_****_
+
+Read file: undefined
+
+---
+
+_****_
+
+Now I see the issue! In your docker-compose.yml file, the CORS_ORIGINS environment variable is set with JSON syntax:
+
+```yaml
+CORS_ORIGINS=["http://localhost:3088","http://frontend:3000"]
+```
+
+But in Coolify, you're likely setting it as a comma-separated string. Let's modify the docker-compose.yml file to use the format that works with Coolify:
+
+---
+
+_****_
+
+```diff
+        - ACCESS_TOKEN_EXPIRE_MINUTES=30
+        - DEBUG=False
+-       - CORS_ORIGINS=["http://localhost:3088","http://frontend:3000"]
++       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3088,http://frontend:3000,http://localhost:3000}
+      volumes:
+        - ./data:/app/data
+```
+
+---
+
+_****_
+
+Perfect! I've made several changes to fix the CORS issue:
+
+1. **Updated the config.py file** to better handle different formats of CORS_ORIGINS from environment variables, including:
+   - Comma-separated strings
+   - JSON-formatted strings
+   - Single URLs
+
+2. **Enhanced the CORS middleware setup in main.py** with:
+   - More detailed logging
+   - Better error handling
+   - Validation to ensure the CORS origins are properly formatted
+
+3. **Created a more detailed debugging endpoint** at `/debug/cors` that shows:
+   - Current CORS settings
+   - Raw environment variables
+   - Other application settings
+
+4. **Modified the docker-compose.yml file** to:
+   - Use Coolify-compatible environment variable format 
+   - Set a default value while making it configurable through Coolify
+
+The key change was in your docker-compose.yml file. It was using a JSON array format for CORS_ORIGINS, but our settings were expecting a comma-separated list. I've updated it to use the Coolify variable substitution format:
+
+```yaml
+CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3088,http://frontend:3000,http://localhost:3000}
+```
+
+This format does two things:
+1. It makes the CORS_ORIGINS variable configurable in Coolify
+2. It provides a default value if not set (everything after the colon)
+
+After deploying these changes, you should:
+1. Ensure you've set CORS_ORIGINS in Coolify with your desired values
+2. Check the logs after startup to see the CORS origins being used
+3. Visit the `/debug/cors` endpoint to verify the configuration is correct
+
+If you continue to have issues, the detailed logging I've added will help diagnose exactly what's happening with the environment variables and CORS configuration.
+
+---
+
+_**User**_
+
+hmm with this change i see errors on the backend.
+
+2025-03-10T04:17:23.699696875Z [2025-03-10 04:17:23 +0000] [1] [INFO] Reason: Worker failed to boot.
+2025-03-10T04:17:30.408025190Z Directory listing of /app/data:
+2025-03-10T04:17:30.410205193Z total 92
+2025-03-10T04:17:30.410219340Z drwxrwxrwx 2 root    root     4096 Mar 10 04:09 .
+2025-03-10T04:17:30.410272220Z drwxr-xr-x 1 appuser appuser  4096 Mar 10 04:17 ..
+2025-03-10T04:17:30.410277881Z -rwxrwxrwx 1 root    root    49152 Mar 10 04:01 har_analyzer.db
+2025-03-10T04:17:30.410281097Z -rwxrwxrwx 1 root    root    32768 Mar 10 04:09 har_analyzer.db-shm
+2025-03-10T04:17:30.410284152Z -rwxrwxrwx 1 root    root        0 Mar 10 04:09 har_analyzer.db-wal
+2025-03-10T04:17:30.410467639Z Current user and group:
+2025-03-10T04:17:30.412207711Z uid=0(root) gid=0(root) groups=0(root)
+2025-03-10T04:17:30.412424091Z Starting application with database URL from environment: sqlite:////app/data/har_analyzer.db
+2025-03-10T04:17:30.623030563Z [2025-03-10 04:17:30 +0000] [1] [INFO] Starting gunicorn 20.1.0
+2025-03-10T04:17:30.623360357Z [2025-03-10 04:17:30 +0000] [1] [INFO] Listening at: http://0.0.0.0:8000 (1)
+2025-03-10T04:17:30.623449556Z [2025-03-10 04:17:30 +0000] [1] [INFO] Using worker: uvicorn.workers.UvicornWorker
+2025-03-10T04:17:30.628700669Z [2025-03-10 04:17:30 +0000] [11] [INFO] Booting worker with pid: 11
+2025-03-10T04:17:30.652744231Z [2025-03-10 04:17:30 +0000] [12] [INFO] Booting worker with pid: 12
+2025-03-10T04:17:30.687347869Z [2025-03-10 04:17:30 +0000] [13] [INFO] Booting worker with pid: 13
+2025-03-10T04:17:30.740642283Z [2025-03-10 04:17:30 +0000] [14] [INFO] Booting worker with pid: 14
+2025-03-10T04:17:31.414548944Z [2025-03-10 04:17:31 +0000] [11] [ERROR] Exception in worker process
+2025-03-10T04:17:31.414595352Z Traceback (most recent call last):
+2025-03-10T04:17:31.414599159Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/sources.py", line 610, in __call__
+2025-03-10T04:17:31.414601954Z     field_value = self.prepare_field_value(field_name, field, field_value, value_is_complex)
+2025-03-10T04:17:31.414604629Z                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414607605Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/sources.py", line 827, in prepare_field_value
+2025-03-10T04:17:31.414609999Z     raise e
+2025-03-10T04:17:31.414630367Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/sources.py", line 824, in prepare_field_value
+2025-03-10T04:17:31.414635187Z     value = self.decode_complex_value(field_name, field, value)
+2025-03-10T04:17:31.414637412Z             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414639656Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/sources.py", line 333, in decode_complex_value
+2025-03-10T04:17:31.414641880Z     return json.loads(value)
+2025-03-10T04:17:31.414644044Z            ^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414646168Z   File "/usr/local/lib/python3.11/json/__init__.py", line 346, in loads
+2025-03-10T04:17:31.414648322Z     return _default_decoder.decode(s)
+2025-03-10T04:17:31.414650366Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414664342Z   File "/usr/local/lib/python3.11/json/decoder.py", line 337, in decode
+2025-03-10T04:17:31.414666757Z     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+2025-03-10T04:17:31.414668850Z                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414671055Z   File "/usr/local/lib/python3.11/json/decoder.py", line 355, in raw_decode
+2025-03-10T04:17:31.414673199Z     raise JSONDecodeError("Expecting value", s, err.value) from None
+2025-03-10T04:17:31.414675483Z json.decoder.JSONDecodeError: Expecting value: line 1 column 2 (char 1)
+2025-03-10T04:17:31.414677577Z 
+2025-03-10T04:17:31.414679691Z The above exception was the direct cause of the following exception:
+2025-03-10T04:17:31.414681805Z 
+2025-03-10T04:17:31.414684319Z Traceback (most recent call last):
+2025-03-10T04:17:31.414686403Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/arbiter.py", line 589, in spawn_worker
+2025-03-10T04:17:31.414688738Z     worker.init_process()
+2025-03-10T04:17:31.414690782Z   File "/usr/local/lib/python3.11/site-packages/uvicorn/workers.py", line 75, in init_process
+2025-03-10T04:17:31.414693057Z     super().init_process()
+2025-03-10T04:17:31.414695111Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 134, in init_process
+2025-03-10T04:17:31.414757529Z     self.load_wsgi()
+2025-03-10T04:17:31.414759973Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/workers/base.py", line 146, in load_wsgi
+2025-03-10T04:17:31.414764422Z     self.wsgi = self.app.wsgi()
+2025-03-10T04:17:31.414766656Z                 ^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414768720Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/app/base.py", line 67, in wsgi
+2025-03-10T04:17:31.414771004Z     self.callable = self.load()
+2025-03-10T04:17:31.414773038Z                     ^^^^^^^^^^^
+2025-03-10T04:17:31.414775052Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 58, in load
+2025-03-10T04:17:31.414777176Z     return self.load_wsgiapp()
+2025-03-10T04:17:31.414779259Z            ^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414781394Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/app/wsgiapp.py", line 48, in load_wsgiapp
+2025-03-10T04:17:31.414783578Z     return util.import_app(self.app_uri)
+2025-03-10T04:17:31.414785752Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414787766Z   File "/usr/local/lib/python3.11/site-packages/gunicorn/util.py", line 359, in import_app
+2025-03-10T04:17:31.414789919Z     mod = importlib.import_module(module)
+2025-03-10T04:17:31.414791944Z           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414793987Z   File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-03-10T04:17:31.414801181Z     return _bootstrap._gcd_import(name[level:], package, level)
+2025-03-10T04:17:31.414803405Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414805509Z   File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-03-10T04:17:31.414808044Z   File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-03-10T04:17:31.414810408Z   File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-03-10T04:17:31.414812582Z   File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-03-10T04:17:31.414814717Z   File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-03-10T04:17:31.414816992Z   File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-03-10T04:17:31.414835556Z   File "/app/src/main.py", line 12, in <module>
+2025-03-10T04:17:31.414838262Z     from src.api.router import api_router
+2025-03-10T04:17:31.414840395Z   File "/app/src/api/router.py", line 4, in <module>
+2025-03-10T04:17:31.414842619Z     from src.api.endpoints import auth, har_files, api_calls
+2025-03-10T04:17:31.414844703Z   File "/app/src/api/endpoints/auth.py", line 8, in <module>
+2025-03-10T04:17:31.414846978Z     from src.api.dependencies import get_current_active_user, TEST_USER_ID, TEST_USER_EMAIL, TEST_USER_USERNAME
+2025-03-10T04:17:31.414849212Z   File "/app/src/api/dependencies.py", line 9, in <module>
+2025-03-10T04:17:31.414851306Z     from src.core.config import settings
+2025-03-10T04:17:31.414853340Z   File "/app/src/core/config.py", line 49, in <module>
+2025-03-10T04:17:31.414855564Z     settings = Settings()
+2025-03-10T04:17:31.414857698Z               ^^^^^^^^^^
+2025-03-10T04:17:31.414859782Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/main.py", line 177, in __init__
+2025-03-10T04:17:31.414862557Z     **__pydantic_self__._settings_build_values(
+2025-03-10T04:17:31.414864831Z       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-10T04:17:31.414866965Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/main.py", line 408, in _settings_build_values
+2025-03-10T04:17:31.414869219Z     source_state = source()
+2025-03-10T04:17:31.414871263Z                    ^^^^^^^^
+2025-03-10T04:17:31.414873337Z   File "/usr/local/lib/python3.11/site-packages/pydantic_settings/sources.py", line 612, in __call__
+2025-03-10T04:17:31.414875512Z     raise SettingsError(
+2025-03-10T04:17:31.414877536Z pydantic_settings.sources.SettingsError: error parsing value for field "CORS_ORIGINS" from source "EnvSettingsSource"
+2025-03-10T04:17:31.414879870Z [2025-03-10 04:17:31 +0000] [11] [INFO] Worker exiting (pid: 11)
+2025-03-10T04:17:31.755892033Z [2025-03-10 04:17:31 +0000] [1] [WARNING] Worker with pid 14 was terminated due to signal 15
+2025-03-10T04:17:31.756325823Z [2025-03-10 04:17:31 +0000] [1] [WARNING] Worker with pid 13 was terminated due to signal 15
+2025-03-10T04:17:31.756924636Z [2025-03-10 04:17:31 +0000] [1] [WARNING] Worker with pid 12 was terminated due to signal 15
+2025-03-10T04:17:31.849400539Z [2025-03-10 04:17:31 +0000] [1] [INFO] Shutting down: Master
+2025-03-10T04:17:31.849487584Z [2025-03-10 04:17:31 +0000] [1] [INFO] Reason: Worker failed to boot.
+
+---
+
+_**Assistant**_
+
+<think>Looking at the error logs, I can see the specific error message:
+
+```
+pydantic_settings.sources.SettingsError: error parsing value for field "CORS_ORIGINS" from source "EnvSettingsSource"
+```
+
+The root cause is in the Python traceback:
+
+```
+json.decoder.JSONDecodeError: Expecting value: line 1 column 2 (char 1)
+```
+
+This suggests that the format of the CORS_ORIGINS environment variable is causing a JSON parsing error. Specifically, it seems the environment variable is being treated as a JSON string, but it's not properly formatted as JSON.
+
+Looking at our docker-compose.yml, we have:
+```yaml
+CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3088,http://frontend:3000,http://localhost:3000,http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:3088}
+```
+
+The issue is that Pydantic's settings parser is trying to parse complex types (like lists) from environment variables as JSON, but our comma-separated string is not valid JSON. Even though we have a validator that handles comma-separated strings, it's not being reached because Pydantic is trying to parse it as JSON first and failing.
+
+We need to update our config.py file to handle the format more robustly. The current issue is that Pydantic automatically attempts to parse environment variables for list settings as JSON before our validator gets a chance to run.</think>I see the issue in the error logs. The application is having a JSON parsing error when reading the CORS_ORIGINS environment variable:
+
+```
+json.decoder.JSONDecodeError: Expecting value: line 1 column 2 (char 1)
+```
+
+The problem is that Pydantic is trying to parse the comma-separated string as JSON before our custom validator gets a chance to run. Let's fix this by modifying how we handle the CORS_ORIGINS environment variable:
+
+---
+
+_****_
+
 
 
 ---

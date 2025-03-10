@@ -37,19 +37,11 @@ def create_application() -> FastAPI:
     # Configure CORS - Proper configuration following best practices
     logger.info(f"Configuring CORS with allowed origins: {settings.CORS_ORIGINS}")
     # Debug for CORS origins
-    logger.info(f"CORS_ORIGINS from environment: {os.environ.get('CORS_ORIGINS', 'Not set')}")
+    logger.info(f"CORS_ORIGINS_STR from environment: {os.environ.get('CORS_ORIGINS_STR', 'Not set')}")
     
-    # Ensure CORS_ORIGINS is a list and has valid values
+    # Get the processed CORS origins list
     cors_origins = settings.CORS_ORIGINS
-    if not isinstance(cors_origins, list):
-        logger.warning(f"CORS_ORIGINS is not a list, converting: {cors_origins}")
-        if isinstance(cors_origins, str):
-            cors_origins = [cors_origins]
-        else:
-            logger.error(f"Invalid CORS_ORIGINS type: {type(cors_origins)}")
-            cors_origins = ["http://localhost:3000"]
-    
-    logger.info(f"Final CORS origins configuration: {cors_origins}")
+    logger.info(f"Processed CORS origins: {cors_origins}")
     
     application.add_middleware(
         CORSMiddleware,
@@ -91,7 +83,7 @@ def create_application() -> FastAPI:
                 "allow_headers": ["Content-Type", "Authorization", "Accept"]
             },
             "environment_variables": {
-                "CORS_ORIGINS_ENV": os.environ.get("CORS_ORIGINS", "Not set in environment"),
+                "CORS_ORIGINS_STR": os.environ.get("CORS_ORIGINS_STR", "Not set in environment"),
                 "raw_env_keys": list(os.environ.keys())
             },
             "settings_dump": {
