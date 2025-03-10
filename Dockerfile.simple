@@ -2,15 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements first to leverage Docker cache
-COPY pyproject.toml poetry.lock* ./
+# Copy requirements.txt first to leverage Docker cache
+COPY requirements.txt .
 
-# Install poetry, export requirements, then install them with pip
-# All in one layer to avoid intermediate containers
-RUN pip install --no-cache-dir poetry==1.5.1 && \
-    poetry export -f requirements.txt --without-hashes -o requirements.txt && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install gunicorn && \
+# Install dependencies 
+RUN pip install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache && \
     rm -rf /tmp/*
 
