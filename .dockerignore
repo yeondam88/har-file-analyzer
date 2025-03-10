@@ -1,0 +1,56 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache
+.coverage
+htmlcov/
+
+# Environment and local development
+.env
+.env.*
+.venv
+env/
+venv/
+ENV/
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build and distribution
+/dist
+/build
+*.egg-info
+
+# Frontend
+/frontend/node_modules
+/frontend/.next
+/frontend/out
+/frontend/.cache
+/frontend/dist
+/frontend/build
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Documentation
+/docs
+*.md
+!README.md
+
+# Local data
+*.db
+*.sqlite3
+/data
+/uploads
+*.har 
