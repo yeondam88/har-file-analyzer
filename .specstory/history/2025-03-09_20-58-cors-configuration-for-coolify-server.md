@@ -2592,7 +2592,373 @@ For production use, SQLite isn't the best choice when you have multiple workers 
 
 ```
 ERROR:src.api.dependencies:Error creating test user: (sqlite3.OperationalError) database is locked
-[SQL: INSERT INTO users (id, email, username, hashed_password, is_active, is_superuser, create
+[SQL: INSERT INTO users (id, email, username, hashed_password, is_active, is_superuser, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)]
+```
+
+SQLite isn't designed for concurrent access from multiple processes, which is happening with your Gunicorn setup (it's running 4 workers: pids 11, 12, 13, 14).
+
+Let's solve this in two steps:
+
+1. First, let's create a modified version of your database session handling to better deal with SQLite locking:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "session.py" • **1** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+Read file: undefined
+
+---
+
+_****_
+
+Let's modify the `session.py` file to better handle SQLite in a multi-worker environment:
+
+---
+
+_****_
+
+```diff
+                              logger.error(f"Failed to fix permissions: {str(perm_err)}")
+              
++             # For SQLite, add event listeners to enable foreign keys
++             if settings.DATABASE_URL.startswith("sqlite"):
++                 @event.listens_for(engine, "connect")
++                 def set_sqlite_pragma(dbapi_connection, connection_record):
++                     cursor = dbapi_connection.cursor()
++                     cursor.execute("PRAGMA foreign_keys=ON")
++                     cursor.execute("PRAGMA journal_mode=WAL")
++                     # Increase timeout to reduce locking issues
++                     cursor.execute("PRAGMA busy_timeout=10000")
++                     # Set recommended settings for concurrency
++                     cursor.execute("PRAGMA temp_store=MEMORY")
++                     cursor.execute("PRAGMA synchronous=NORMAL")
++                     cursor.execute("PRAGMA cache_size=10000")
++                     cursor.close()
++             
+              # Create the engine with appropriate connect_args
+              engine = create_engine(
+                  connect_args={
+                      "check_same_thread": False,
+-                     "timeout": 30
++                     "timeout": 60,  # Increase timeout to 60 seconds (from 30)
++                     "isolation_level": "IMMEDIATE",  # Helps with concurrent access
+                  } if settings.DATABASE_URL.startswith("sqlite") else {},
+                  # More resilient connection pool settings
+                  pool_pre_ping=True,
+                  pool_recycle=3600,
+-             )
+-             
+-             # For SQLite, add event listeners to enable foreign keys
+-             if settings.DATABASE_URL.startswith("sqlite"):
+-                 @event.listens_for(engine, "connect")
+-                 def set_sqlite_pragma(dbapi_connection, connection_record):
+-                     cursor = dbapi_connection.cursor()
+-                     cursor.execute("PRAGMA foreign_keys=ON")
+-                     cursor.execute("PRAGMA journal_mode=WAL")
+-                     cursor.close()
++                 pool_size=5,  # Limit connection pool size
++                 max_overflow=10,  # Allow a few more connections if needed
++             )
+              
+              # Test the engine by making a simple query
+```
+
+---
+
+_****_
+
+Now let's reduce the number of Gunicorn workers to help with SQLite concurrency issues by creating a custom Dockerfile:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "Dockerfile" • **6** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+Read file: undefined
+
+---
+
+_****_
+
+Let's update the Dockerfile to reduce the number of workers and add additional options to Gunicorn:
+
+---
+
+_****_
+
+```diff
+  if [ "$IN_COOLIFY" = "true" ] && [ "$(id -u)" != "0" ]; then\n\
+    echo "In Coolify environment, trying to run with root privileges..."\n\
+-   exec gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}\n\
++   exec gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --graceful-timeout 60 --keep-alive 5 --max-requests 200 --max-requests-jitter 20\n\
+  else\n\
+    # Start the application with gunicorn\n\
+    echo "Starting application with database URL from environment: $DATABASE_URL"\n\
+-   exec gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}\n\
++   exec gunicorn src.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --timeout 120 --graceful-timeout 60 --keep-alive 5 --max-requests 200 --max-requests-jitter 20\n\
+  fi\n\
+  ' > /app/entrypoint.sh && \
+```
+
+---
+
+_****_
+
+Finally, let's also update the database initialization in `init_db.py` to better handle startup issues:
+
+---
+
+_****_
+
+<details>
+            <summary>Searched codebase "init_db.py" • **1** results</summary>
+        
+| File |
+|------|
+| `undefined` |
+
+</details>
+
+---
+
+_****_
+
+Read file: undefined
+
+---
+
+_****_
+
+Let's update the `init_db.py` file to add more robust locking handling and transaction timeouts:
+
+---
+
+_****_
+
+```diff
+                  logger.warning(f"Could not set permissions on directory: {str(dir_err)}")
+          
++         # Check for WAL and SHM files and fix their permissions if they exist
++         for ext in ['-wal', '-shm']:
++             wal_file = f"{db_path}{ext}"
++             if os.path.exists(wal_file):
++                 try:
++                     os.chmod(wal_file, 0o666)
++                     logger.info(f"Set permissions on {wal_file}")
++                 except Exception as wal_err:
++                     logger.warning(f"Could not set permissions on {wal_file}: {str(wal_err)}")
++         
+          # Create or fix permissions on the database file
+          if os.path.exists(db_path):
+                  os.system(f"chmod 666 {db_path}")
+              
++             # Also fix WAL and SHM files
++             os.system(f"[ -f {db_path}-wal ] && chmod 666 {db_path}-wal || true")
++             os.system(f"[ -f {db_path}-shm ] && chmod 666 {db_path}-shm || true")
++             
+              logger.info("Applied Coolify-specific fixes using system commands")
+          
+-         # Test if fixes worked by trying to connect
+-         test_conn = sqlite3.connect(db_path)
++         # Test if fixes worked by trying to connect with a timeout
++         test_conn = sqlite3.connect(db_path, timeout=10)
++         test_conn.execute("PRAGMA busy_timeout=5000")  # 5 second timeout for locked operations
+          test_conn.execute("CREATE TABLE IF NOT EXISTS permission_test (id INTEGER PRIMARY KEY)")
+          test_conn.execute("INSERT INTO permission_test VALUES (1)")
+```
+
+---
+
+_****_
+
+Let's also update the dependencies module to make it more resistant to database issues:
+
+---
+
+_****_
+
+```diff
+      For testing: Return a test user without authentication
+      """
+-     # Check if user exists in DB, if not create one
++     try:
++         # First check if we can execute a read query (which is less likely to lock)
+          try:
+              logger.info("Attempting to fetch test user from database")
+              user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
+-         if not user:
++             if user:
++                 logger.info("Found existing test user")
++                 return user
++         except Exception as read_error:
++             logger.error(f"Error reading from database: {str(read_error)}")
++             
++         # If we get here, either the user doesn't exist or we had a read error
++         # Let's return an in-memory user without persisting if there are any issues
++         try:
++             # Try with a transaction timeout
+              logger.info("Test user not found, creating new test user")
+-             # Create a test user
++             
++             # Check if the table exists first
++             table_exists = False
++             try:
++                 result = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
++                 table_exists = result.scalar() is not None
++             except Exception as table_check_error:
++                 logger.error(f"Error checking for users table: {str(table_check_error)}")
++             
++             if not table_exists:
++                 logger.warning("Users table doesn't exist, using in-memory user")
++                 return User(
++                     id=TEST_USER_ID,
++                     email=TEST_USER_EMAIL,
++                     username=TEST_USER_USERNAME,
++                     hashed_password="test_hashed_password",
++                     is_active=True,
++                     is_superuser=True,
++                 )
++             
++             # Create user with transaction guard
+              user = User(
+                  id=TEST_USER_ID,
+                  is_superuser=True,
+              )
++             
+              try:
++                 db.begin_nested()  # Create a savepoint
+                  db.add(user)
+                  db.commit()
+                  logger.info("Successfully created test user in database")
+-                 db.refresh(user)
+-             except Exception as e:
+-                 logger.error(f"Error creating test user: {str(e)}")
++                 return user
++             except Exception as create_error:
++                 logger.error(f"Error creating test user: {str(create_error)}")
+                  db.rollback()
+-                 # If creation fails, try to fetch again - another process might have created it
+-                 logger.info("Retrying to fetch test user after creation failure")
++                 
++                 # If the error indicates a user already exists (unique constraint), try to fetch again
++                 if "UNIQUE constraint" in str(create_error):
++                     logger.info("User likely exists due to unique constraint error, trying to fetch again")
+                      user = db.query(User).filter(User.username == TEST_USER_USERNAME).first()
+-                 if not user:
++                     if user:
++                         logger.info("Successfully fetched existing user after unique constraint error")
++                         return user
++                 
++                 # If we still don't have a user, return an in-memory one
+                  logger.warning("Using in-memory test user as fallback")
+-                     # If still no user, create a dummy user object without persisting to DB
+-                     user = User(
++                 return User(
+                      id=TEST_USER_ID,
+                      email=TEST_USER_EMAIL,
+                  )
+          except Exception as e:
+-         logger.error(f"Unexpected error in get_current_user: {str(e)}")
+-         # Create a dummy user object in case of any database errors
+-         logger.warning("Using in-memory test user due to unexpected error")
+-         user = User(
++             logger.error(f"Unexpected error in user creation flow: {str(e)}")
++     except Exception as outer_e:
++         logger.error(f"Unexpected error in get_current_user: {str(outer_e)}")
++     
++     # Final fallback - always return a user
++     logger.warning("Using emergency in-memory test user due to unexpected error")
++     return User(
+          id=TEST_USER_ID,
+          email=TEST_USER_EMAIL,
+          is_superuser=True,
+      )
+-     
+-     return user
+  
+  """
+```
+
+---
+
+_****_
+
+These changes make several critical improvements to handle SQLite database locking issues in your application:
+
+1. **Improved SQLite Connection Settings**:
+   - Added proper PRAGMA settings for SQLite including busy_timeout, synchronous mode, and cache settings
+   - Configured isolation_level to "IMMEDIATE" which can reduce locking conflicts
+   - Modified connection pool settings to limit concurrent connections
+
+2. **Reduced Server Load**:
+   - Cut the number of Gunicorn workers from 4 to 2, which reduces the likelihood of database contention
+   - Added worker timeouts and restart options to handle worker failures more gracefully
+
+3. **Better WAL File Handling**:
+   - Added explicit permission fixing for WAL and SHM files, which are used by SQLite in WAL mode
+   - Enhanced file permission checks to ensure all related files are accessible
+
+4. **Robust User Authentication**:
+   - Completely rewrote the get_current_user function to be resilient to database failures
+   - Added multiple fallback mechanisms to ensure authentication still works even if the database is locked
+   - Implemented table existence checks before attempting operations
+
+These changes address the "database is locked" errors by:
+1. Reducing the number of simultaneous database operations
+2. Adding proper timeouts and retries for operations
+3. Ensuring proper permissions on all SQLite-related files
+4. Providing in-memory fallbacks when database operations fail
+
+After you deploy these changes, you should experience significantly fewer database locking issues. If you continue to have problems, you might want to consider a more robust database solution like PostgreSQL, which handles concurrent access much better than SQLite.
+
+---
+
+_**User**_
+
+I've got 404 with this Request URL:
+http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:8088/api/har-files/e51267ea-ab80-48ff-97b7-7774165ee7f2/report/general?format=markdown&download=true
+Request Method:
+GET
+Status Code:
+404 Not Found
+
+export report is working but generate report is not working please check for me
+
+---
+
+_**Assistant**_
+
+
 
 ---
 

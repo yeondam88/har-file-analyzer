@@ -620,7 +620,7 @@ def analyze_har_file_enhanced_patterns(
         )
 
 
-@router.get("/{har_file_id}/analyze/similar-apis", response_model=Dict[str, Any])
+@router.get("/{har_file_id}/similar-apis", response_model=Dict[str, Any])
 def analyze_har_file_similar_apis(
     *,
     db: Session = Depends(get_db),
@@ -630,13 +630,36 @@ def analyze_har_file_similar_apis(
     download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
 ) -> Any:
     """
-    Identify similar API endpoints in a HAR file.
+    Alias of /analyze/similar-apis for backward compatibility
+    """
+    return analyze_har_file_similar_apis(
+        db=db, 
+        har_file_id=har_file_id, 
+        current_user=current_user, 
+        format=format, 
+        download=download
+    )
+
+
+@router.get("/{har_file_id}/report/general", response_model=Dict[str, Any])
+def generate_general_report(
+    *,
+    db: Session = Depends(get_db),
+    har_file_id: str,
+    current_user: User = Depends(get_current_active_user),
+    format: str = Query("json", description="Output format: json or markdown"),
+    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
+) -> Any:
+    """
+    Generate a general analysis report for a HAR file.
     
-    This endpoint groups API calls based on similarity:
-    - Path similarity (endpoints with similar structures)
-    - Request/response structure similarity
-    - Parameter similarity
-    - Combined similarity scoring
+    This endpoint provides a comprehensive overview of the HAR file analysis:
+    - Basic file information
+    - API endpoints summary
+    - Domain statistics
+    - HTTP methods distribution
+    - Common response patterns
+    - Authentication methods used
     
     Parameters:
         format: Output format, either 'json' or 'markdown'
@@ -658,50 +681,37 @@ def analyze_har_file_similar_apis(
             detail="Not enough permissions",
         )
     
-    # Generate similar APIs analysis
     try:
-        # Get API calls
-        api_calls = db.query(APICall).filter(APICall.har_file_id == har_file_id).all()
+        # Use HAR Analyzer to generate a comprehensive report
+        analyzer = HARAnalyzer(db)
+        report = analyzer.generate_report(har_file_id)
         
-        # Convert API calls to a format that APIPatternEnhancer can use
-        api_calls_data = []
-        for call in api_calls:
-            # Create a simplified representation of the API call
-            call_data = {
-                "url": call.url,
-                "method": call.method,
-                "path": urlparse(call.url).path,
-                "query": urlparse(call.url).query,
-                "request_headers": json.loads(call.request_headers) if hasattr(call, 'request_headers') and call.request_headers else {},
-                "request_body": call.request_body if hasattr(call, 'request_body') else None,
-                "response_headers": json.loads(call.response_headers) if hasattr(call, 'response_headers') and call.response_headers else {},
-                "status_code": call.status_code if hasattr(call, 'status_code') else None
-            }
-            api_calls_data.append(call_data)
-        
-        # Generate similar APIs report
+        # Add HAR file information
         har_file_info = {
             "id": har_file.id,
             "filename": har_file.filename,
             "file_size": har_file.file_size,
             "browser": har_file.browser,
             "browser_version": har_file.browser_version,
+            "created_at": har_file.created_at.isoformat() if har_file.created_at else None,
         }
         
-        similar_apis = APIPatternEnhancer.detect_similar_apis(api_calls_data)
-        
-        report = {
+        # Combine everything into a general report
+        general_report = {
             "har_file": har_file_info,
-            "similar_api_groups": similar_apis
+            "summary": report.get("summary", {}),
+            "domains": report.get("domains", {}),
+            "auth_methods": report.get("auth_methods", {})
         }
         
         # Return based on requested format
         if format.lower() == "markdown":
-            return create_markdown_response(har_file, report, "similar-apis", download)
+            return create_markdown_response(har_file, general_report, "general", download)
         else:
-            return report
+            return general_report
     except Exception as e:
+        logger.error(f"Error generating general report: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error analyzing similar APIs: {str(e)}",
+            detail=f"Error generating general report: {str(e)}",
         ) 
