@@ -12,6 +12,162 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Create required directories and files for development mode
+RUN mkdir -p /app/src/lib/api
+
+# Create utils.ts
+RUN echo 'import { ClassValue, clsx } from "clsx"; \
+import { twMerge } from "tailwind-merge"; \
+\
+export function cn(...inputs: ClassValue[]) { \
+  return twMerge(clsx(inputs)); \
+} \
+\
+export function downloadBlob(blob: Blob, filename: string) { \
+  const url = window.URL.createObjectURL(blob); \
+  const link = document.createElement("a"); \
+  link.href = url; \
+  link.download = filename; \
+  document.body.appendChild(link); \
+  link.click(); \
+  document.body.removeChild(link); \
+  window.URL.revokeObjectURL(url); \
+} \
+\
+export function formatFileSize(bytes: number): string { \
+  if (bytes === 0) return "0 B"; \
+  const k = 1024; \
+  const sizes = ["B", "KB", "MB", "GB", "TB"]; \
+  const i = Math.floor(Math.log(bytes) / Math.log(k)); \
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]; \
+}' > /app/src/lib/utils.ts
+
+# Create har-files.ts
+RUN echo 'import axios from "axios"; \
+\
+export interface HARFileWithCount { \
+  id: string; \
+  filename: string; \
+  description?: string; \
+  file_size: number; \
+  browser?: string; \
+  created_at: string; \
+  api_call_count: number; \
+} \
+\
+const apiClient = axios.create({ \
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8088/api", \
+  headers: { \
+    "Content-Type": "application/json", \
+  }, \
+}); \
+\
+export const uploadHARFile = async (file: File, description?: string) => { \
+  try { \
+    const formData = new FormData(); \
+    formData.append("file", file); \
+    if (description) { \
+      formData.append("description", description); \
+    } \
+    const response = await apiClient.post("/har-files", formData, { \
+      headers: { \
+        "Content-Type": "multipart/form-data", \
+      }, \
+    }); \
+    return response.data; \
+  } catch (error) { \
+    console.error("Error uploading HAR file:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const testCorsConnection = async () => { \
+  try { \
+    const response = await apiClient.get("/health"); \
+    return response.data; \
+  } catch (error) { \
+    console.error("Error testing CORS connection:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const getHARFiles = async () => { \
+  try { \
+    const response = await apiClient.get("/har-files"); \
+    return response.data; \
+  } catch (error) { \
+    console.error("Error fetching HAR files:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const deleteHARFile = async (id: string) => { \
+  try { \
+    await apiClient.delete(`/har-files/${id}`); \
+    return true; \
+  } catch (error) { \
+    console.error("Error deleting HAR file:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const exportMarkdown = async (fileId: string) => { \
+  try { \
+    const response = await apiClient.get(`/har-files/${fileId}/export/markdown`, { \
+      responseType: "blob", \
+    }); \
+    return response.data; \
+  } catch (error) { \
+    console.error("Error exporting markdown:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const exportPostman = async (fileId: string) => { \
+  try { \
+    const response = await apiClient.get(`/har-files/${fileId}/export/postman`, { \
+      responseType: "blob", \
+    }); \
+    return response.data; \
+  } catch (error) { \
+    console.error("Error exporting Postman collection:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const generateReport = async ( \
+  fileId: string, \
+  reportType: "general" | "auth" | "endpoints" | "enhanced-patterns" | "similar-apis", \
+  format: "json" | "markdown" = "markdown", \
+  download: boolean = true \
+) => { \
+  try { \
+    const response = await apiClient.get( \
+      `/har-files/${fileId}/report/${reportType}?format=${format}&download=${download}`, \
+      { \
+        responseType: download ? "blob" : "json", \
+      } \
+    ); \
+    return response.data; \
+  } catch (error) { \
+    console.error("Error generating report:", error); \
+    throw error; \
+  } \
+}; \
+\
+export const getHARFile = async (id: string) => { \
+  const response = await apiClient.get(`/har-files/${id}`); \
+  return response.data; \
+}; \
+\
+export const analyzeHARFile = async (id: string, format: "json" | "markdown" = "json", download: boolean = false) => { \
+  const response = await apiClient.get(`/har-files/${id}/analyze`, { \
+    params: { format, download }, \
+    responseType: format === "markdown" && download ? "blob" : "json", \
+  }); \
+  return response.data; \
+};' > /app/src/lib/api/har-files.ts
+
 # Set environment variables
 ENV PORT=3000
 ENV NODE_ENV=development
