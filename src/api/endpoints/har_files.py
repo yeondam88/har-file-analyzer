@@ -788,4 +788,123 @@ def generate_enhanced_patterns_report(
         current_user=current_user,
         format=format,
         download=download
+    )
+
+
+@router.get("/{har_file_id}/analyze/similar-apis", response_model=Dict[str, Any])
+def analyze_har_file_similar_apis(
+    *,
+    db: Session = Depends(get_db),
+    har_file_id: str,
+    current_user: User = Depends(get_current_active_user),
+    format: str = Query("json", description="Output format: json or markdown"),
+    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
+) -> Any:
+    """
+    Identify similar API endpoints in a HAR file based on various similarity metrics.
+    
+    This endpoint groups API calls based on similarity:
+    - Path similarity (endpoints with similar structures)
+    - Request/response structure similarity
+    - Parameter similarity
+    - Combined similarity scoring
+    
+    Parameters:
+        format: Output format, either 'json' or 'markdown'
+        download: Whether to download the markdown file (True) or display inline (False)
+    """
+    # Get HAR file
+    har_file = db.query(HARFile).filter(HARFile.id == har_file_id).first()
+    
+    if not har_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="HAR file not found",
+        )
+    
+    # Check ownership
+    if har_file.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    
+    try:
+        # Get API calls
+        api_calls = db.query(APICall).filter(APICall.har_file_id == har_file_id).all()
+        
+        # Convert API calls to a format that APIPatternEnhancer can use
+        api_calls_data = []
+        for call in api_calls:
+            # Create a simplified representation of the API call
+            call_data = {
+                "url": call.url,
+                "method": call.method,
+                "path": urlparse(call.url).path,
+                "query": urlparse(call.url).query,
+                "request_headers": json.loads(call.request_headers) if hasattr(call, 'request_headers') and call.request_headers else {},
+                "request_body": call.request_body if hasattr(call, 'request_body') else None,
+                "response_headers": json.loads(call.response_headers) if hasattr(call, 'response_headers') and call.response_headers else {},
+                "status_code": call.status_code if hasattr(call, 'status_code') else None
+            }
+            api_calls_data.append(call_data)
+        
+        # Generate similar APIs report
+        har_file_info = {
+            "id": har_file.id,
+            "filename": har_file.filename,
+            "file_size": har_file.file_size,
+            "browser": har_file.browser,
+            "browser_version": har_file.browser_version,
+        }
+        
+        # Use APIPatternEnhancer to find similar APIs
+        similar_apis = APIPatternEnhancer.find_similar_apis(api_calls_data)
+        
+        report = {
+            "har_file": har_file_info,
+            "similar_apis": similar_apis
+        }
+        
+        # Return based on requested format
+        if format.lower() == "markdown":
+            return create_markdown_response(har_file, report, "similar-apis", download)
+        else:
+            return report
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing similar APIs: {str(e)}",
+        )
+
+
+@router.get("/{har_file_id}/report/similar-apis", response_model=Dict[str, Any])
+def generate_similar_apis_report(
+    *,
+    db: Session = Depends(get_db),
+    har_file_id: str,
+    current_user: User = Depends(get_current_active_user),
+    format: str = Query("json", description="Output format: json or markdown"),
+    download: bool = Query(False, description="Force download the markdown file instead of displaying in browser")
+) -> Any:
+    """
+    Generate a similar APIs analysis report for a HAR file.
+    
+    This endpoint groups API calls based on similarity:
+    - Path similarity (endpoints with similar structures)
+    - Request/response structure similarity
+    - Parameter similarity
+    - Combined similarity scoring
+    
+    Parameters:
+        format: Output format, either 'json' or 'markdown'
+        download: Whether to download the markdown file (True) or display inline (False)
+    """
+    # Use the implementation from analyze_har_file_similar_apis
+    return analyze_har_file_similar_apis(
+        db=db,
+        har_file_id=har_file_id,
+        current_user=current_user,
+        format=format,
+        download=download
     ) 
