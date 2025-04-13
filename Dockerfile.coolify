@@ -1,0 +1,42 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc libc6-dev sqlite3 curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy requirements.txt first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies 
+RUN pip install --no-cache-dir -r requirements.txt && \
+    rm -rf /root/.cache && \
+    rm -rf /tmp/*
+
+# Copy application code
+COPY . .
+
+# Create data directory with permissive permissions
+RUN mkdir -p /app/data && \
+    chmod -R 777 /app/data
+
+# Make the entrypoint script executable
+COPY coolify-entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Expose the port
+EXPOSE 8000
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PORT=8000
+ENV DATABASE_URL=sqlite:////app/data/har_analyzer.db
+ENV PYTHONUNBUFFERED=1
+ENV IN_COOLIFY=true
+ENV CORS_ORIGINS='["*"]'
+
+# Run the application with the entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"] 
