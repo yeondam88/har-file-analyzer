@@ -16,7 +16,7 @@ services:
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - DEBUG=False
-      - CORS_ORIGINS_STR=http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:3088,http://localhost:3088,http://localhost:3000
+      - CORS_ORIGINS_STR=http://o80wgcws8cs8cwwko88wwgko.5.78.117.57.sslip.io:3088,http://localhost:3088,http://localhost:3000
     volumes:
       - ./data:/app/data
     healthcheck:
@@ -35,7 +35,7 @@ services:
     ports:
       - "3088:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://wkg08ks0g0cg40sk04gcscwo.5.78.133.23.sslip.io:8088/api
+      - NEXT_PUBLIC_API_URL=http://o80wgcws8cs8cwwko88wwgko.5.78.117.57.sslip.io:8088/api
     depends_on:
       - backend
     healthcheck:
