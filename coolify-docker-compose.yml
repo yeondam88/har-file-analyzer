@@ -8,7 +8,7 @@ services:
     container_name: har-analyzer-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8080:8000"
     environment:
       - DATABASE_URL=sqlite:////app/data/har_analyzer.db
       - SECRET_KEY=${SECRET_KEY:-YourSecureSecretKey}
@@ -36,7 +36,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=/api
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
       - NODE_ENV=production
     depends_on:
       - backend
